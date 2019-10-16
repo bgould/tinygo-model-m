@@ -22,7 +22,7 @@ func ANSI101DefaultLayer() keyboard.Keymap {
 
 func ANSI101Keymap(
 
-	K72,      K53, K54, K64, K74,   K76, K78, K69, K59,   K56, K46, K4B, K4C,   K4F, K3F, K1E, 
+  K72,      K53, K54, K64, K74,   K76, K78, K69, K59,   K56, K46, K4B, K4C,   K4F, K3F, K1E, 
     
   K52, K42, K43, K44, K45, K55, K57, K47, K48, K49, K4A, K5A, K58, K66,   K5C, K5E, K5D,   K1B, K1C, K1D, K0D, 
   K62, K32, K33, K34, K35, K65, K67, K37, K38, K39, K3A, K6A, K68, K26,   K5B, K4E, K4D,   K3B, K3C, K3D, K3E, 
