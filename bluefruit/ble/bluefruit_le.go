@@ -1,7 +1,7 @@
 package ble
 
 import (
-	"device/arm"
+	"bytes"
 	"fmt"
 	m "machine"
 	"strconv"
@@ -29,6 +29,8 @@ type Mode uint8
 const (
 	CommandMode Mode = iota
 	DataMode
+
+	ResponseBufferSize = 2048
 )
 
 type SPIFriend struct {
@@ -38,6 +40,7 @@ type SPIFriend struct {
 	rst m.Pin
 
 	msg     sdep.Message
+	buf     *bytes.Buffer
 	mode    Mode
 	verbose bool
 }
@@ -48,7 +51,14 @@ type SPIFriendConfig struct {
 }
 
 func NewSPIFriend(bus *m.SPI, cs m.Pin, irq m.Pin, rst m.Pin) *SPIFriend {
-	return &SPIFriend{bus: bus, cs: cs, irq: irq, rst: rst, mode: CommandMode}
+	return &SPIFriend{
+		bus:  bus,
+		cs:   cs,
+		irq:  irq,
+		rst:  rst,
+		buf:  bytes.NewBuffer(make([]byte, ResponseBufferSize)),
+		mode: CommandMode,
+	}
 }
 
 func (dev *SPIFriend) Begin(config SPIFriendConfig) (err error) {
@@ -110,157 +120,69 @@ func (t *timer) Expired() bool {
 
 func (dev *SPIFriend) SendAT(command string) ([]byte, error) {
 
-	dev.cs.Low()
 	defer dev.cs.High()
-	mandatoryDelay()
+	dev.buf.Reset()
 
-	err := dev.sendATcommand(command)
-	if err != nil {
-		return nil, err
+	cmd := []byte(command)
+	for i, c, more := 0, len(command), true; i < c; i += sdep.MaxPayloadSize {
+		j := i + sdep.MaxPayloadSize
+		if j >= c {
+			j = c
+			more = false
+		}
+		err := dev.sendPacket(sdep.CmdTypeATWrapper, cmd[i:j], more)
+		if err != nil {
+			return nil, err
+		}
 	}
-	dev.cs.High()
-	delay()
 
+	delay()
 	dev.cs.Low()
 	mandatoryDelay()
 
-	t := newTimer(1 * time.Second)
-
-	var rsp []byte
+	t := newTimer(2 * time.Second)
 
 	for !t.Expired() {
 		if !dev.irq.Get() {
 			continue
 		}
-		err = dev.readPacket()
+		err := dev.readPacket()
 		if err != nil {
-			if e, ok := err.(Error); ok {
-				if uint32(e) == uint32(ErrSlaveDeviceNotReady) ||
-					uint32(e) == uint32(ErrSlaveDeviceReadOverflow) {
-					dev.cs.High()
-					delay()
-					dev.cs.Low()
-					mandatoryDelay()
-					continue
+			/*
+				if e, ok := err.(Error); ok {
+					if uint32(e) == uint32(ErrSlaveDeviceNotReady) ||
+						uint32(e) == uint32(ErrSlaveDeviceReadOverflow) {
+			*/
+			dev.cs.High()
+			delay()
+			dev.cs.Low()
+			mandatoryDelay()
+			continue
+			/*
+					}
 				}
+				return nil, err
+			*/
+		}
+		newlen := dev.buf.Len() + int(dev.msg.Header.GetLength())
+		if newlen > ResponseBufferSize {
+			panic(fmt.Sprintf("response too large for buffer: %s", newlen))
+		}
+		dev.buf.Write(dev.msg.GetPayload())
+		//payload := dev.msg.GetPayload()
+		/*
+			if dev.verbose {
+				dev.debug("AT response: %s", string(payload))
 			}
-			return nil, err
-		}
-		payload := dev.msg.GetPayload()
-		if dev.verbose {
-			dev.debug("AT response: %s", string(payload))
-		}
-		rsp = append(rsp, payload...)
+		*/
 		if dev.msg.Header.HasMoreData() {
 			continue
 		} else {
-			return rsp, nil
+			return dev.buf.Bytes(), nil
 		}
 	}
 	return nil, fmt.Errorf("read timeout")
 }
-
-/*
-type Info struct {
-	BoardName    string
-	SOCName      string
-	SerialNumber string
-	Codebase     string
-	Firmware     string
-}
-
-func (info *Info) String() string {
-	return "Info{}"
-}
-
-func (dev *SPIFriend) ATZ() error {
-	_, err := dev.SendAT("ATZ")
-	return err
-}
-
-func (dev *SPIFriend) Check() error {
-	_, err := dev.SendAT("AT")
-	return err
-}
-
-func (dev *SPIFriend) Echo(enable bool) error {
-	dev.cs.Low()
-	defer dev.cs.High()
-	mandatoryDelay()
-	if enable {
-		return dev.sendATcommand("ATE=1")
-	} else {
-		return dev.sendATcommand("ATE=0")
-	}
-}
-
-func (dev *SPIFriend) Info() (Info, error) {
-	dev.cs.Low()
-	defer dev.cs.High()
-	mandatoryDelay()
-	err := dev.sendATcommand("ATI")
-	mandatoryDelay()
-	return Info{}, err
-}
-
-func (dev *SPIFriend) SetMode(mode Mode) bool {
-	if mode != CommandMode && mode != DataMode {
-		return false
-	}
-	if mode == dev.mode {
-		return true
-	}
-	dev.mode = mode
-	if mode == DataMode {
-		//dev.flush()  // TODO: implement later
-	}
-	return true
-}
-*/
-/*
-func (dev *SPIFriend) ReadPacket() (rsp *sdep.Message, err error) {
-	dev.cs.Low()
-	defer dev.cs.High()
-	mandatoryDelay()
-	err = dev.readPacket()
-	if err != nil {
-		return nil, err
-	}
-	return &dev.msg, nil
-}
-
-func (dev *SPIFriend) readResponse(timeout time.Duration) ([]byte, error) {
-
-	if dev.verbose {
-		dev.debug("reading response with timeout: %d", timeout)
-	}
-
-	if dev.verbose {
-		dev.debug("starting loop")
-	}
-	var response []byte
-
-	for i := 0; i < 100000; i++ {
-		if dev.irq.Get() {
-			if err := dev.readPacket(); err != nil {
-				return nil, err
-			} else {
-				if dev.verbose {
-					dev.debug("%s", dev.msg.String())
-				}
-				payload := dev.msg.GetPayload()
-				if payload != nil && len(payload) != 0 {
-					response = append(response, payload...)
-				}
-				if !dev.msg.Header.HasMoreData() {
-					return response, nil
-				}
-			}
-		}
-	}
-	return nil, fmt.Errorf("read timeout")
-}
-*/
 
 func (dev *SPIFriend) sendInitializePattern() error {
 	if dev.verbose {
@@ -272,15 +194,10 @@ func (dev *SPIFriend) sendInitializePattern() error {
 	return dev.sendPacket(sdep.CmdTypeInitialize, nil, false)
 }
 
-func (dev *SPIFriend) sendATcommand(cmd string) (err error) {
-	if dev.verbose {
-		dev.debug("sending AT command: %s", cmd)
-	}
-	err = dev.sendPacket(sdep.CmdTypeATWrapper, []byte(cmd), false)
-	return
-}
-
 func (dev *SPIFriend) sendPacket(cmd uint16, buf []byte, moreData bool) error {
+
+	dev.cs.Low()
+	defer dev.cs.High()
 
 	if dev.verbose {
 		dev.debug("Sending command packet: %04X", cmd)
@@ -321,7 +238,25 @@ func (dev *SPIFriend) sendPacket(cmd uint16, buf []byte, moreData bool) error {
 		dev.debug("sending %s", dev.msg.String())
 	}
 
-	dev.bus.Transfer(byte(dev.msg.Header.Type))
+	var b byte
+	// Loop until Bluefruit is ready
+	for i := 0; i < 25; i++ {
+		b, _ := dev.bus.Transfer(byte(dev.msg.Header.Type))
+		if b != uint8(ErrSlaveDeviceNotReady) {
+			break
+		}
+		if dev.verbose {
+			dev.debug("bluefruit not ready")
+		}
+		dev.cs.High()
+		mandatoryDelay()
+		dev.cs.Low()
+	}
+	if b == uint8(ErrSlaveDeviceNotReady) {
+		return fmt.Errorf("write timeout")
+	}
+
+	// send the rest of the data
 	dev.bus.Transfer(byte(uint8(dev.msg.Header.ID & 0xFF)))
 	dev.bus.Transfer(byte(uint8(dev.msg.Header.ID >> 0x8)))
 	if length > 0 {
@@ -386,6 +321,12 @@ func (dev *SPIFriend) readPacket() (err error) {
 	return
 }
 
+func (dev *SPIFriend) debug(format string, args ...interface{}) {
+	fmt.Printf("[SPIFRIEND %d] ", time.Now().UnixNano())
+	fmt.Printf(format, args...)
+	println("\r")
+}
+
 func mandatoryDelay() {
 	delayMicros(100)
 	//	time.Sleep(250 * time.Microsecond)
@@ -395,12 +336,13 @@ func delay() {
 	delayMicros(10)
 }
 
-func (dev *SPIFriend) debug(format string, args ...interface{}) {
-	fmt.Printf("[SPIFRIEND %d] ", time.Now().UnixNano())
-	fmt.Printf(format, args...)
-	println("\r")
+func delayMicros(usecs uint32) {
+	t := newTimer(time.Duration(usecs) * time.Microsecond)
+	for !t.Expired() {
+	}
 }
 
+/*
 // this is probably stupid (also probably wrong)
 // TODO: actually take the time to count out the cycles and loop in asm
 func delayMicros(usecs uint32) {
@@ -454,3 +396,4 @@ func delayMicros(usecs uint32) {
 		arm.Asm("nop")
 	}
 }
+*/

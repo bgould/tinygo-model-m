@@ -31,7 +31,7 @@ func main() {
 	time.Sleep(3 * time.Second)
 
 	spifriend = ble.NewSPIFriend(&m.SPI0, csPin, irqPin, m.NoPin)
-	spifriend.Begin(ble.SPIFriendConfig{Verbose: true})
+	spifriend.Begin(ble.SPIFriendConfig{Verbose: false})
 
 	for {
 		cli()
@@ -60,16 +60,18 @@ var (
 )
 
 func send(argv []string) {
-	if len(argv) != 2 {
+	if len(argv) < 2 {
 		println("Usage: send <AT command>\r")
 	}
-	command := argv[1]
-	fmt.Printf("\r\n%s\r\n", command)
+	command := strings.Join(argv[1:], " ")
+	fmt.Printf("\r\n--> %s\r\n", command)
 	response, err := spifriend.SendAT(command)
 	if err != nil {
 		println("Error: ", err.Error(), "\r")
 	} else {
-		fmt.Printf("\r\n%s\r\n", string(response))
+		println("\r\n<--\r")
+		console.Write(response)
+		println("\r")
 	}
 }
 
@@ -210,7 +212,7 @@ func cli() {
 				state = StateInput
 			}
 		}
-		time.Sleep(10 * time.Millisecond)
+		//time.Sleep(10 * time.Millisecond)
 	}
 
 }
