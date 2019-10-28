@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bgould/tinygo-model-m/keyboard/keycodes"
+	"github.com/bgould/tinygo-model-m/timer"
 )
 
 type Keymap [8][16]keycodes.Keycode
@@ -108,7 +109,7 @@ func (m *Matrix) Scan() (changed bool) {
 		m.debounce -= 1
 		// if still debouncing, wait an interval before returning
 		if m.debounce > 0 {
-			time.Sleep(1 * time.Millisecond)
+			timer.Wait(1 * time.Millisecond)
 			return
 		}
 		// if debouncing is complete, update the matrix and mark as changed

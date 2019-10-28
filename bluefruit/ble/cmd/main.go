@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	csPin  = m.A4
-	irqPin = m.A5
+	csPin  = m.D10
+	irqPin = m.D11
 )
 
 var (

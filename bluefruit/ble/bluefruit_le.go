@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bgould/tinygo-model-m/bluefruit/sdep"
+	"github.com/bgould/tinygo-model-m/timer"
 )
 
 type Error uint32
@@ -82,7 +83,7 @@ func (dev *SPIFriend) Reset() (err error) {
 		dev.rst.Configure(m.PinConfig{Mode: m.PinOutput})
 		dev.rst.High()
 		dev.rst.Low()
-		time.Sleep(10 * time.Millisecond)
+		timer.Wait(10 * time.Millisecond)
 		dev.rst.High()
 		err = nil
 	}
@@ -93,29 +94,13 @@ func (dev *SPIFriend) Reset() (err error) {
 	if dev.verbose {
 		dev.debug("waiting 1 second for reset\r")
 	}
-	time.Sleep(1 * time.Second)
+	timer.Wait(1 * time.Second)
 	if dev.verbose {
 		dev.debug("returning from Begin()")
 	}
 
 	return
 
-}
-
-type timer struct {
-	start    int64
-	interval int64
-}
-
-func newTimer(interval time.Duration) timer {
-	return timer{
-		start:    time.Now().UnixNano(),
-		interval: int64(interval),
-	}
-}
-
-func (t *timer) Expired() bool {
-	return time.Now().UnixNano() > (t.start + t.interval)
 }
 
 func (dev *SPIFriend) SendAT(command string) ([]byte, error) {
@@ -140,7 +125,7 @@ func (dev *SPIFriend) SendAT(command string) ([]byte, error) {
 	dev.cs.Low()
 	mandatoryDelay()
 
-	t := newTimer(2 * time.Second)
+	t := timer.New(2 * time.Second)
 
 	for !t.Expired() {
 		if !dev.irq.Get() {
@@ -329,7 +314,6 @@ func (dev *SPIFriend) debug(format string, args ...interface{}) {
 
 func mandatoryDelay() {
 	delayMicros(100)
-	//	time.Sleep(250 * time.Microsecond)
 }
 
 func delay() {
@@ -337,9 +321,7 @@ func delay() {
 }
 
 func delayMicros(usecs uint32) {
-	t := newTimer(time.Duration(usecs) * time.Microsecond)
-	for !t.Expired() {
-	}
+	timer.Wait(time.Duration(usecs) * time.Microsecond)
 }
 
 /*
