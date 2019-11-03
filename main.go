@@ -14,7 +14,7 @@ import (
 	"github.com/bgould/tinygo-model-m/timer"
 )
 
-const _debug = true
+const _debug = false
 
 var (
 	console = m.UART0

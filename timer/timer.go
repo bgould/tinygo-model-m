@@ -2,13 +2,16 @@ package timer
 
 import "time"
 
+func Wait(duration time.Duration) {
+	//start := time.Now().UnixNano()
+	//for stop := start + int64(duration); time.Now().UnixNano() < stop; {
+	//}
+	New(duration).WaitUntilExpired()
+}
+
 type Timer struct {
 	start    int64
 	interval int64
-}
-
-func Wait(duration time.Duration) {
-	New(duration).WaitUntilExpired()
 }
 
 func New(interval time.Duration) Timer {
