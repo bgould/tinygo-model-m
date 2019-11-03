@@ -89,6 +89,28 @@ func configurePortExpanders() {
 
 }
 
+func ReadRow(rowIndex uint8) keyboard.Row {
+	selectRows(uint8(1) << rowIndex)
+	delayMicros(50)
+	b := readRow(rowIndex)
+	selectRows(0)
+	return keyboard.Row(b)
+}
+
+func selectRows(state uint8) {
+	for i, pin := range pins {
+		pinState := state&uint8(1<<uint8(i)) == 0
+		pin.Set(pinState)
+	}
+}
+
+func readRow(rowIndex uint8) keyboard.Row {
+	var b uint16
+	b |= uint16(port1.ReadByte(mcp23008.GPIO))
+	b |= uint16(port2.ReadByte(mcp23008.GPIO)) << 8
+	return keyboard.Row(^b)
+}
+
 type BluefruitLEHost struct {
 	spifriend *ble.SPIFriend
 }
@@ -121,28 +143,6 @@ func (host *EZKeyHost) Send(report *keyboard.Report) {
 	host.hid.Send(&rpt)
 }
 
-func ReadRow(rowIndex uint8) keyboard.Row {
-	selectRows(uint8(1) << rowIndex)
-	delayMicros(50)
-	b := readRow(rowIndex)
-	selectRows(0)
-	return keyboard.Row(b)
-}
-
-func selectRows(state uint8) {
-	for i, pin := range pins {
-		pinState := state&uint8(1<<uint8(i)) == 0
-		pin.Set(pinState)
-	}
-}
-
-func readRow(rowIndex uint8) keyboard.Row {
-	var b uint16
-	b |= uint16(port1.ReadByte(mcp23008.GPIO))
-	b |= uint16(port2.ReadByte(mcp23008.GPIO)) << 8
-	return keyboard.Row(^b)
-}
-
 //go:inline
 func debug(format string, args ...interface{}) {
 	if _debug {
@@ -150,60 +150,6 @@ func debug(format string, args ...interface{}) {
 	}
 }
 
-// this is probably stupid (also probably wrong)
-// TODO: actually take the time to count out the cycles and loop in asm
 func delayMicros(usecs uint32) {
-	t := timer.New(time.Duration(usecs) * time.Microsecond)
-	t.WaitUntilExpired()
-	/*
-	   for ; usecs > 0; usecs-- {
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   		arm.Asm("nop")
-	   	}
-	*/
+	timer.Wait(time.Duration(usecs) * time.Microsecond)
 }
